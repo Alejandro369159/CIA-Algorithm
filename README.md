@@ -11,4 +11,4 @@
 `cd .\src\`
 
 3- Correr el archivo con
-`node .\NnaAlgorithm.js`
+`node .\CiaAlgorithm.js`

@@ -48,9 +48,11 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 var fs_1 = require("fs");
+var removeDuplicates_1 = require("./utils/removeDuplicates");
 // Global state
 var trip = [];
 var totalCost = 0;
+var matrix = [];
 function resetGlobalState() {
     trip = [];
     totalCost = 0;
@@ -87,9 +89,9 @@ function createDistancesMatrix(nodes) {
                 .filter(function (relation) { return relation.toId !== fromNode.id; }) });
     });
 }
-function insertFirstNodeRelation(matrix, testNumber) {
-    var firstPath = { from: matrix[0].id, to: matrix[0].relations[0].toId };
-    var leastDistance = matrix[0].relations[0].distance;
+function insertFirstNodeRelationAndReturnNode() {
+    // Compare the nodes to get the one with the chepeast relation among them
+    var leastDistance = Infinity;
     var selectedNode = matrix[0];
     var closestRelation = matrix[0].relations[0];
     for (var _i = 0, matrix_1 = matrix; _i < matrix_1.length; _i++) {
@@ -103,42 +105,65 @@ function insertFirstNodeRelation(matrix, testNumber) {
             }
         }
     }
-    totalCost += closestRelation.distance;
-    firstPath =
-        testNumber === "firstTest"
-            ? { from: selectedNode.id, to: closestRelation.toId }
-            : { from: closestRelation.toId, to: selectedNode.id };
-    trip.push.apply(trip, [firstPath.from, firstPath.to]);
+    var closestRelationNode = matrix.find(function (node) { return node.id === closestRelation.toId; });
+    if (!closestRelationNode)
+        return;
+    // We set the first three nodes in the trip (the cheapest relation and the return to the start)
+    var RETURN_MULTIPLIER = 2;
+    totalCost += leastDistance * RETURN_MULTIPLIER;
+    trip.push.apply(trip, [selectedNode, closestRelationNode, selectedNode]);
 }
-function selectRestOfNearestneighbors(matrix) {
-    while (trip.length < matrix.length) {
-        var lastNodeInTrip = matrix.find(function (node) { return node.id === trip[trip.length - 1]; });
-        if (!lastNodeInTrip)
-            break;
-        var options = lastNodeInTrip.relations.filter(function (relation) { return !trip.includes(relation.toId); });
-        var closestneighbor = options[0];
-        if (options.length === 1) {
-            trip.push(closestneighbor.toId);
-            totalCost += closestneighbor.distance;
-            break;
-        }
-        if (!closestneighbor)
-            throw new Error();
-        for (var _i = 0, options_1 = options; _i < options_1.length; _i++) {
-            var relation = options_1[_i];
-            if (relation.distance < closestneighbor.distance &&
-                !trip.includes(relation.toId)) {
-                closestneighbor = relation;
+function calculateClosestNodeForInsertion() {
+    // Get candidates
+    var candidates = matrix.filter(function (node) { return !trip.some(function (_node) { return _node.id === node.id; }); });
+    // Get the node with the least distance from all possible nodes in trip
+    var closestNode = candidates[0];
+    var leastDistance = Infinity;
+    candidates.forEach(function (candidate) {
+        (0, removeDuplicates_1.removeDuplicates)(trip).forEach(function (node) {
+            var distanceFromCandidateToNode = candidate.relations.find(function (relation) { return node.id === relation.toId; }).distance;
+            if (distanceFromCandidateToNode < leastDistance) {
+                leastDistance = distanceFromCandidateToNode;
+                closestNode = candidate;
             }
+        });
+    });
+    return closestNode;
+}
+function insertChepeastInsertionPointInTrip(closestNode) {
+    // Calculate the cost of every possible insertion point
+    var cheapestCost = Infinity;
+    var cheapestPositionIndex = Infinity;
+    var _loop_1 = function (i) {
+        var cik = trip[i].relations.find(function (relation) { return relation.toId === closestNode.id; }).distance;
+        var ckj = closestNode.relations.find(function (relation) { return relation.toId === trip[i + 1].id; }).distance;
+        var cij = trip[i].relations.find(function (relation) { return relation.toId === trip[i + 1].id; }).distance;
+        var cost = cik + ckj - cij;
+        if (cost < cheapestCost) {
+            cheapestCost = cost;
+            cheapestPositionIndex = i;
         }
-        trip.push(closestneighbor.toId);
-        totalCost += closestneighbor.distance;
+    };
+    for (var i = 0; i < trip.length - 2; i++) {
+        _loop_1(i);
+    }
+    // Add the node to the trip
+    totalCost += cheapestCost;
+    trip.splice(cheapestPositionIndex + 1, 0, closestNode);
+}
+function insertRestOfNodesByCia() {
+    var RETURN_TO_INITIAL_NODE = 1;
+    while (trip.length < matrix.length + RETURN_TO_INITIAL_NODE) {
+        // Get closest node
+        var closestNode = calculateClosestNodeForInsertion();
+        //  Insert in the best position according to CIA
+        insertChepeastInsertionPointInTrip(closestNode);
     }
 }
 // Process for calculating a trip with its cost
-function calculateTrip(testNumber) {
+function calculateTrip() {
     return __awaiter(this, void 0, void 0, function () {
-        var txtRawData, error_1, nodes, matrix;
+        var txtRawData, error_1, nodes;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -146,25 +171,27 @@ function calculateTrip(testNumber) {
                     _a.label = 1;
                 case 1:
                     _a.trys.push([1, 3, , 4]);
-                    return [4 /*yield*/, getTxtRawData("../references/48nodes.txt")];
+                    return [4 /*yield*/, getTxtRawData("../references/101nodes.txt")];
                 case 2:
                     txtRawData = _a.sent();
                     return [3 /*break*/, 4];
                 case 3:
                     error_1 = _a.sent();
                     console.error(error_1);
-                    return [2 /*return*/, "Error"];
+                    return [2 /*return*/, "error"];
                 case 4:
                     // We parse/format the information
                     if (!txtRawData)
-                        return [2 /*return*/, "Error"];
+                        return [2 /*return*/, "error"];
                     nodes = parseDataFromTxt(txtRawData);
+                    // We create the matrix of distances
                     matrix = createDistancesMatrix(nodes);
+                    if (!matrix.length)
+                        return [2 /*return*/, "error"];
                     // We grab the cheapest relation of two nodes
-                    insertFirstNodeRelation(matrix, testNumber);
-                    // We iterate over the rest of nodes to place them by nearest neightboor
-                    selectRestOfNearestneighbors(matrix);
-                    // Result
+                    insertFirstNodeRelationAndReturnNode();
+                    // Iterate with the cheapest insertion
+                    insertRestOfNodesByCia();
                     return [2 /*return*/, { trip: trip, cost: totalCost }];
             }
         });
@@ -174,22 +201,16 @@ function calculateTrip(testNumber) {
 // it swaps the order of those two to see which one gives a better result
 function main() {
     return __awaiter(this, void 0, void 0, function () {
-        var firstTestTrip, secondTestTrip, bestResult;
+        var result;
         return __generator(this, function (_a) {
             switch (_a.label) {
-                case 0: return [4 /*yield*/, calculateTrip("firstTest")];
+                case 0: return [4 /*yield*/, calculateTrip()];
                 case 1:
-                    firstTestTrip = _a.sent();
-                    resetGlobalState();
-                    return [4 /*yield*/, calculateTrip("secondTest")];
-                case 2:
-                    secondTestTrip = _a.sent();
-                    if (firstTestTrip === "Error" || secondTestTrip === "Error")
-                        return [2 /*return*/];
-                    console.log("===========", "\n First Test Trip", firstTestTrip, "===========");
-                    console.log("===========", "\n Second Test Trip", secondTestTrip, "===========");
-                    bestResult = firstTestTrip.cost < secondTestTrip.cost ? firstTestTrip : secondTestTrip;
-                    console.log("=============", "\n FINAL RESULT: ", "\n Trip:", bestResult.trip, "\nCost: ", bestResult.cost);
+                    result = _a.sent();
+                    if (result === "error")
+                        console.error("Hubo un error obteniendo el trip");
+                    else
+                        console.log("TRIP: ", result.trip.map(function (node) { return node.id; }), result.trip.slice(trip.length - 2, trip.length), "COST: ", result.cost);
                     return [2 /*return*/];
             }
         });
